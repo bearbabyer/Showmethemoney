@@ -1203,9 +1203,10 @@ async function _decryptConfig() {
     SUPABASE_ANON_KEY = cfg.SUPABASE_ANON_KEY || '';
     return;
   }
-  // v2: AES-GCM 解密
+  // v2: AES-GCM 解密（支援 _byHost 各 hostname 獨立加密）
   const host = location.hostname || 'localhost';
   if (cfg._hosts && !cfg._hosts.includes(host)) return; // 非授權網域，直接放棄
+  const hostCfg = cfg._byHost?.[host] || cfg; // 優先取該 hostname 的加密值
   try {
     const salt = new TextEncoder().encode('smtm-v2-salt-2026');
     const keyMat = await crypto.subtle.importKey('raw', new TextEncoder().encode(host), 'PBKDF2', false, ['deriveKey']);
@@ -1218,8 +1219,8 @@ async function _decryptConfig() {
       const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: buf.slice(0, 12) }, aesKey, buf.slice(12));
       return new TextDecoder().decode(plain);
     };
-    SUPABASE_URL      = await dec(cfg.SUPABASE_URL);
-    SUPABASE_ANON_KEY = await dec(cfg.SUPABASE_ANON_KEY);
+    SUPABASE_URL      = await dec(hostCfg.SUPABASE_URL);
+    SUPABASE_ANON_KEY = await dec(hostCfg.SUPABASE_ANON_KEY);
   } catch (e) { console.warn('Config decrypt failed:', e.message); }
 }
 
