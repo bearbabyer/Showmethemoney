@@ -2334,6 +2334,18 @@ async function _fetchTxDailyData() {
   return _txDailyProm;
 }
 
+// ==================== Supabase Edge Function proxy ====================
+async function _sbProxy(type) {
+  if (!SUPABASE_URL) return null;
+  const url = `${SUPABASE_URL}/functions/v1/market-proxy?type=${type}`;
+  const r = await fetch(url, {
+    headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!r.ok) throw new Error(`sbProxy ${r.status}`);
+  return r.json();
+}
+
 // ==================== 台指近月（TXF）====================
 const _SS_TXF = 'smtm_txf_last';
 async function fetchTxfNear() {
@@ -2346,7 +2358,34 @@ async function fetchTxfNear() {
     return q;
   };
 
-  // ① TWSE MIS（tse_TXFR1.tw）— 交易時段即時，盤後欄位為 "-"
+  // ① Supabase Edge Function（server-side proxy，無 CORS 限制）
+  try {
+    const d = await _sbProxy('txf_mis');
+    const m = (d?.msgArray || [])[0];
+    if (m) {
+      const zOk  = m.z  && m.z  !== '-';
+      const pzOk = m.pz && m.pz !== '-';
+      const yOk  = m.y  && m.y  !== '-';
+      const price = parseFloat(zOk ? m.z : pzOk ? m.pz : yOk ? m.y : 0);
+      const prev  = parseFloat(yOk ? m.y : 0);
+      if (price > 0) {
+        const chg = (zOk || pzOk) && prev > 0 ? price - prev : 0;
+        const pct = (zOk || pzOk) && prev > 0 ? chg / prev * 100 : 0;
+        return mkQ({ price, chg, pct, vol: parseFloat(m.v || 0) });
+      }
+    }
+  } catch (_) {}
+
+  // ② Edge Function DailyFuturesQuotes
+  try {
+    const rows = await _sbProxy('txf_day');
+    if (Array.isArray(rows) && rows.length) {
+      const parsed = parseFutPrice(rows[rows.length - 1]);
+      if (parsed?.price > 0) return mkQ(parsed, '台指近月');
+    }
+  } catch (_) {}
+
+  // ③ TWSE MIS（tse_TXFR1.tw）— 交易時段即時，盤後欄位為 "-"（proxy 備援）
   try {
     const url = `https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=tse_TXFR1.tw&json=1&delay=0&_=${Date.now()}`;
     const r = await proxyFetch(url);
@@ -2415,7 +2454,16 @@ async function fetchTxfNight() {
     return q;
   };
 
-  // ① TAIFEX OpenAPI NightFuturesQuotes（即時夜盤，proxy 轉發）
+  // ① Supabase Edge Function（server-side proxy，無 CORS 限制）
+  try {
+    const rows = await _sbProxy('txf_night');
+    if (Array.isArray(rows) && rows.length) {
+      const parsed = parseFutPrice(rows[rows.length - 1]);
+      if (parsed?.price > 0) return mkQ(parsed, '台指夜盤');
+    }
+  } catch (_) {}
+
+  // ② TAIFEX OpenAPI NightFuturesQuotes（proxy 備援）
   try {
     const r = await proxyFetch(`https://openapi.taifex.com.tw/v1/NightFuturesQuotes?CommodityID=TXF&_=${Date.now()}`);
     const rows = JSON.parse(await r.text());
