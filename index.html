@@ -2348,7 +2348,7 @@ async function fetchTxfNear() {
 
   // ① TWSE MIS（tse_TXFR1.tw）— 交易時段即時，盤後欄位為 "-"
   try {
-    const url = 'https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=tse_TXFR1.tw&json=1&delay=0';
+    const url = `https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=tse_TXFR1.tw&json=1&delay=0&_=${Date.now()}`;
     const r = await proxyFetch(url);
     const d = JSON.parse(await r.text());
     const m = (d.msgArray || [])[0];
@@ -2368,7 +2368,7 @@ async function fetchTxfNear() {
 
   // ② TAIFEX OpenAPI DailyFuturesQuotes（日盤近月即時）
   try {
-    const r = await proxyFetch('https://openapi.taifex.com.tw/v1/DailyFuturesQuotes?CommodityID=TXF');
+    const r = await proxyFetch(`https://openapi.taifex.com.tw/v1/DailyFuturesQuotes?CommodityID=TXF&_=${Date.now()}`);
     const rows = JSON.parse(await r.text());
     if (Array.isArray(rows) && rows.length) {
       const parsed = parseFutPrice(rows[rows.length - 1]);
@@ -2417,7 +2417,7 @@ async function fetchTxfNight() {
 
   // ① TAIFEX OpenAPI NightFuturesQuotes（即時夜盤，proxy 轉發）
   try {
-    const r = await proxyFetch('https://openapi.taifex.com.tw/v1/NightFuturesQuotes?CommodityID=TXF');
+    const r = await proxyFetch(`https://openapi.taifex.com.tw/v1/NightFuturesQuotes?CommodityID=TXF&_=${Date.now()}`);
     const rows = JSON.parse(await r.text());
     if (Array.isArray(rows) && rows.length) {
       const parsed = parseFutPrice(rows[rows.length - 1]);
